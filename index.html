@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Эхолот — игра в темноте</title>
+  <meta name="description" content="Лабиринт в полной темноте: звуковая волна на секунду показывает стены, но твари идут на звук.">
+  <meta name="theme-color" content="#04060c">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #04060c; --wave: #4ff0ff; --enemy: #ff3b5c; --exit: #7dff9a; --text: #d9f6ff; --muted: #6b8a99; --panel: rgba(12, 22, 34, 0.85); color-scheme: dark; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 15px/1.45 Onest, system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+    .bar { display: flex; align-items: center; gap: 14px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; font: 700 13px 'JetBrains Mono', monospace; letter-spacing: 0.04em; }
+    .bar b { color: var(--wave); }
+    .bar .sp { margin-left: auto; }
+    .bar button { padding: 6px 10px; border: 1px solid #1d3442; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+    canvas { flex: 1; width: 100%; min-height: 0; display: block; }
+    .pad { display: none; grid-template-columns: auto 1fr; align-items: center; gap: 12px; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); }
+    @media (pointer: coarse), (max-width: 760px) { .pad { display: grid; } }
+    .dpad { display: grid; grid-template-columns: repeat(3, clamp(40px, 13vw, 54px)); grid-template-rows: repeat(3, clamp(40px, 13vw, 54px)); gap: 4px; }
+    .dpad button, .pingbtn { border: 1px solid #1d3442; background: #0b1520; color: var(--text); font-size: 20px; border-radius: 14px; touch-action: none; }
+    .dpad button:active, .pingbtn:active { background: #13283a; }
+    .dpad [data-d=up] { grid-area: 1 / 2; } .dpad [data-d=left] { grid-area: 2 / 1; } .dpad [data-d=right] { grid-area: 2 / 3; } .dpad [data-d=down] { grid-area: 3 / 2; }
+    .pingbtn { justify-self: end; width: clamp(84px, 27vw, 120px); height: clamp(84px, 27vw, 120px); border-radius: 50%; border-color: var(--wave); color: var(--wave); font: 800 17px Onest, sans-serif; box-shadow: 0 0 30px -8px var(--wave); position: relative; overflow: hidden; }
+    .pingbtn i { position: absolute; left: 0; bottom: 0; width: 100%; background: rgba(79, 240, 255, 0.18); height: 0; }
+    .ov { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(2, 4, 8, 0.82); backdrop-filter: blur(4px); z-index: 5; }
+    .ov[hidden] { display: none; }
+    .card { width: min(440px, 100%); padding: 28px 24px; border: 1px solid #1d3442; border-radius: 24px; background: var(--panel); text-align: center; }
+    .card h1 { margin: 0 0 6px; font: 800 clamp(34px, 9vw, 46px)/1 Onest, sans-serif; letter-spacing: -0.02em; color: var(--wave); text-shadow: 0 0 24px rgba(79, 240, 255, 0.45); }
+    .card p { margin: 10px 0; color: #a9c4cf; }
+    .card ul { margin: 14px 0; padding: 0; list-style: none; text-align: left; display: grid; gap: 8px; }
+    .card li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; color: #c6dde6; }
+    .stars { font-size: 34px; letter-spacing: 6px; margin: 6px 0; }
+    .go { margin-top: 12px; width: 100%; padding: 15px; border: 0; border-radius: 14px; background: var(--wave); color: #022; font: 800 17px Onest, sans-serif; cursor: pointer; }
+    .stat { display: flex; justify-content: center; gap: 22px; font: 700 14px 'JetBrains Mono', monospace; color: var(--muted); }
+    .stat b { display: block; font-size: 22px; color: var(--text); }
+    .back { display: inline-block; margin-top: 14px; color: var(--muted); font-size: 13px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span>УРОВЕНЬ <b id="lvl">1</b></span>
+    <span>ПИНГИ <b id="pings">0</b></span>
+    <span class="sp">РЕКОРД <b id="best">1</b></span>
+    <button id="sound" aria-label="Звук">🔊</button>
+  </div>
+  <canvas id="cv"></canvas>
+  <div class="pad">
+    <div class="dpad">
+      <button data-d="up" aria-label="Вверх">▲</button><button data-d="left" aria-label="Влево">◀</button>
+      <button data-d="right" aria-label="Вправо">▶</button><button data-d="down" aria-label="Вниз">▼</button>
+    </div>
+    <button class="pingbtn" id="pingBtn"><i id="cool"></i>ПИНГ</button>
+  </div>
+
+  <div class="ov" id="ov">
+    <div class="card" id="card"></div>
+  </div>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = (id) => document.getElementById(id);
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const WAVE_SPEED = 9;     // клеток в секунду
+  const WAVE_MAX = 7;       // радиус волны
+  const FADE = 2200;        // мс, сколько светится стена
+  const COOLDOWN = 1100;
+
+  let G = null, T = 20, ox = 0, oy = 0, running = false, muted = false;
+  let best = 1;
+  try { best = +localStorage.getItem('echo-best') || 1; } catch {}
+  $('best').textContent = best;
+
+  // ---------- Звук (Web Audio, всё синтезируется) ----------
+  let ac = null;
+  const audio = () => { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); return ac; };
+  function tone(type, f1, f2, dur, vol, delay = 0, filter) {
+    if (muted) return;
+    const a = audio(), t = a.currentTime + delay;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = o;
+    if (filter) { const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filter; o.connect(f); node = f; }
+    node.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  const sPing = () => { tone('sine', 1400, 420, 0.45, 0.22); tone('sine', 1400, 420, 0.4, 0.07, 0.28); tone('sine', 1400, 420, 0.35, 0.03, 0.55); };
+  const sGrowl = () => tone('sawtooth', 90, 45, 0.7, 0.12, 0, 380);
+  const sStep = () => tone('triangle', 160, 90, 0.06, 0.05);
+  const sWin = () => [523, 659, 784, 1046].forEach((f, i) => tone('sine', f, f, 0.25, 0.12, i * 0.09));
+  const sLose = () => { tone('sawtooth', 220, 40, 1.2, 0.18, 0, 600); tone('square', 60, 30, 1, 0.08); };
+
+  // ---------- Лабиринт ----------
+  function genMaze(cells) {
+    const n = cells * 2 + 1;
+    const g = Array.from({ length: n }, () => new Uint8Array(n).fill(1));
+    const st = [[1, 1]]; g[1][1] = 0;
+    while (st.length) {
+      const [x, y] = st[st.length - 1];
+      const nb = [[2, 0], [-2, 0], [0, 2], [0, -2]].map(([dx, dy]) => [x + dx, y + dy, dx, dy])
+        .filter(([a, b]) => a > 0 && b > 0 && a < n - 1 && b < n - 1 && g[b][a]);
+      if (!nb.length) { st.pop(); continue; }
+      const [a, b, dx, dy] = nb[Math.random() * nb.length | 0];
+      g[y + dy / 2][x + dx / 2] = 0; g[b][a] = 0; st.push([a, b]);
+    }
+    // несколько петель, чтобы от тварей можно было уйти
+    for (let i = 0; i < cells * cells * 0.1; i++) {
+      const x = 1 + (Math.random() * (n - 2) | 0), y = 1 + (Math.random() * (n - 2) | 0);
+      if (!g[y][x]) continue;
+      if ((g[y][x - 1] === 0 && g[y][x + 1] === 0 && g[y - 1][x] && g[y + 1][x]) || (g[y - 1][x] === 0 && g[y + 1][x] === 0 && g[y][x - 1] && g[y][x + 1])) g[y][x] = 0;
+    }
+    return g;
+  }
+  function bfs(g, sx, sy) {
+    const n = g.length, d = Array.from({ length: n }, () => new Int16Array(n).fill(-1));
+    const q = [[sx, sy]]; d[sy][sx] = 0;
+    for (let i = 0; i < q.length; i++) {
+      const [x, y] = q[i];
+      for (const [dx, dy] of Object.values(DIRS)) {
+        const a = x + dx, b = y + dy;
+        if (!g[b][a] && d[b][a] < 0) { d[b][a] = d[y][x] + 1; q.push([a, b]); }
+      }
+    }
+    return d;
+  }
+
+  function newLevel(level) {
+    const cells = Math.min(4 + level, 13);
+    const grid = genMaze(cells), n = grid.length;
+    const dist = bfs(grid, 1, 1);
+    let ex = 1, ey = 1;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (dist[y][x] > dist[ey][ex]) { ex = x; ey = y; }
+    const enemies = [];
+    const count = Math.min(level - 1, 5);
+    const spots = [];
+    for (let y = 1; y < n; y += 2) for (let x = 1; x < n; x += 2) if (dist[y][x] > 8 && !(x === ex && y === ey)) spots.push([x, y]);
+    for (let i = 0; i < count && spots.length; i++) {
+      const [x, y] = spots.splice(Math.random() * spots.length | 0, 1)[0];
+      enemies.push({ x, y, mode: 'wander', target: null, until: 0, next: 0, last: null, seen: -1e9, sx: x, sy: y });
+    }
+    G = {
+      level, grid, size: n, px: 1, py: 1, ex, ey, enemies,
+      lit: Array.from({ length: n }, () => new Float64Array(n).fill(-1e9)),
+      seen: Array.from({ length: n }, () => new Uint8Array(n)),
+      waves: [], pings: 0, lastPing: -1e9, t0: performance.now(), exitSeen: 0,
+      par: Math.ceil(cells * 0.9),
+    };
+    layout();
+    $('lvl').textContent = level; $('pings').textContent = 0;
+  }
+
+  function layout() {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    if (!G) return;
+    T = Math.floor(Math.min(cv.width / G.size, cv.height / G.size) * 0.96);
+    ox = (cv.width - T * G.size) / 2 | 0; oy = (cv.height - T * G.size) / 2 | 0;
+  }
+  addEventListener('resize', layout);
+
+  // ---------- Действия ----------
+  function ping() {
+    if (!running) return;
+    const now = performance.now();
+    if (now - G.lastPing < COOLDOWN) return;
+    G.lastPing = now; G.pings++;
+    $('pings').textContent = G.pings;
+    G.waves.push({ x: G.px, y: G.py, t0: now });
+    sPing();
+    // твари слышат пинг и идут к месту, откуда он прозвучал
+    const d = bfs(G.grid, G.px, G.py);
+    let alerted = false;
+    for (const e of G.enemies) if (d[e.y][e.x] >= 0 && d[e.y][e.x] <= 14) { e.mode = 'hunt'; e.target = [G.px, G.py]; e.until = now + 9000; alerted = true; }
+    if (alerted) setTimeout(sGrowl, 350);
+  }
+  function move(dir) {
+    if (!running) return;
+    const [dx, dy] = DIRS[dir];
+    const x = G.px + dx, y = G.py + dy;
+    if (G.grid[y][x]) { G.lit[y][x] = Math.max(G.lit[y][x], performance.now() - FADE * 0.75); G.seen[y][x] = 1; return; }
+    G.px = x; G.py = y; sStep();
+    if (x === G.ex && y === G.ey) win();
+    checkCaught();
+  }
+  function checkCaught() { if (G.enemies.some((e) => e.x === G.px && e.y === G.py)) lose(); }
+
+  function stepEnemies(now) {
+    const toPlayer = bfs(G.grid, G.px, G.py);
+    for (const e of G.enemies) {
+      if (now < e.next) continue;
+      // шаги игрока слышно в паре клеток
+      if (toPlayer[e.y][e.x] >= 0 && toPlayer[e.y][e.x] <= 3) { e.mode = 'hunt'; e.target = [G.px, G.py]; e.until = now + 3000; }
+      if (e.mode === 'hunt' && (now > e.until || (e.x === e.target[0] && e.y === e.target[1]))) e.mode = 'wander';
+      let nx = e.x, ny = e.y;
+      if (e.mode === 'hunt') {
+        const d = bfs(G.grid, e.target[0], e.target[1]);
+        for (const [dx, dy] of Object.values(DIRS)) {
+          const a = e.x + dx, b = e.y + dy;
+          if (!G.grid[b][a] && d[b][a] >= 0 && d[b][a] < d[ny][nx]) { nx = a; ny = b; }
+        }
+        e.next = now + 360;
+      } else {
+        const opts = Object.values(DIRS).map(([dx, dy]) => [e.x + dx, e.y + dy]).filter(([a, b]) => !G.grid[b][a]);
+        const fwd = opts.filter(([a, b]) => !e.last || a !== e.last[0] || b !== e.last[1]);
+        [nx, ny] = (fwd.length ? fwd : opts)[Math.random() * (fwd.length || opts.length) | 0];
+        e.next = now + 650;
+      }
+      e.last = [e.x, e.y]; e.x = nx; e.y = ny;
+    }
+    checkCaught();
+  }
+
+  // ---------- Отрисовка ----------
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!G) return;
+    if (running) stepEnemies(now);
+    const n = G.size;
+    // волны подсвечивают всё, что попадает на фронт
+    G.waves = G.waves.filter((w) => {
+      const r = (now - w.t0) / 1000 * WAVE_SPEED;
+      if (r > WAVE_MAX + 1) return false;
+      const x0 = Math.max(0, w.x - WAVE_MAX - 1), x1 = Math.min(n - 1, w.x + WAVE_MAX + 1);
+      const y0 = Math.max(0, w.y - WAVE_MAX - 1), y1 = Math.min(n - 1, w.y + WAVE_MAX + 1);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const d = Math.hypot(x - w.x, y - w.y);
+        if (d <= r && d > r - 1.2 && d <= WAVE_MAX) {
+          if (G.grid[y][x]) { G.lit[y][x] = now; G.seen[y][x] = 1; }
+          if (x === G.ex && y === G.ey) G.exitSeen = now;
+        }
+      }
+      for (const e of G.enemies) { const d = Math.hypot(e.x - w.x, e.y - w.y); if (d <= r && d > r - 1.2 && d <= WAVE_MAX) { e.seen = now; e.sx = e.x; e.sy = e.y; } }
+      return true;
+    });
+
+    ctx.fillStyle = '#04060c'; ctx.fillRect(0, 0, cv.width, cv.height);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (!G.grid[y][x]) continue;
+      const near = Math.abs(x - G.px) + Math.abs(y - G.py) === 1 ? 0.16 : 0;
+      const a = Math.max(near, G.seen[y][x] ? 0.045 : 0, 1 - (now - G.lit[y][x]) / FADE);
+      if (a <= 0.01) continue;
+      ctx.fillStyle = `rgba(79,240,255,${a * 0.85})`;
+      ctx.fillRect(ox + x * T + 1, oy + y * T + 1, T - 2, T - 2);
+    }
+    // выход
+    const ea = G.exitSeen ? Math.max(0.3, 1 - (now - G.exitSeen) / FADE) : 0;
+    if (ea) { ctx.fillStyle = `rgba(125,255,154,${ea})`; ctx.shadowColor = '#7dff9a'; ctx.shadowBlur = 20 * ea; ctx.fillRect(ox + G.ex * T + T * 0.2, oy + G.ey * T + T * 0.2, T * 0.6, T * 0.6); ctx.shadowBlur = 0; }
+    // волны
+    for (const w of G.waves) {
+      const r = (now - w.t0) / 1000 * WAVE_SPEED;
+      if (r > WAVE_MAX) continue;
+      ctx.strokeStyle = `rgba(79,240,255,${0.5 * (1 - r / WAVE_MAX)})`; ctx.lineWidth = Math.max(1.5, T * 0.08);
+      ctx.beginPath(); ctx.arc(ox + (w.x + 0.5) * T, oy + (w.y + 0.5) * T, r * T, 0, Math.PI * 2); ctx.stroke();
+    }
+    // твари видны только там, где их задела волна
+    for (const e of G.enemies) {
+      const a = 1 - (now - e.seen) / 1200;
+      if (a <= 0) continue;
+      const cx = ox + (e.sx + 0.5) * T, cy = oy + (e.sy + 0.5) * T;
+      ctx.fillStyle = `rgba(255,59,92,${a})`; ctx.shadowColor = '#ff3b5c'; ctx.shadowBlur = 18 * a;
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) { const ang = i / 9 * Math.PI * 2, rr = T * (i % 2 ? 0.22 : 0.42); ctx.lineTo(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr); }
+      ctx.fill(); ctx.shadowBlur = 0;
+    }
+    // игрок
+    const pulse = 0.75 + Math.sin(now / 300) * 0.15;
+    const px = ox + (G.px + 0.5) * T, py = oy + (G.py + 0.5) * T;
+    ctx.fillStyle = '#e8fcff'; ctx.shadowColor = '#4ff0ff'; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.arc(px, py, T * 0.28 * pulse, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    // кулдаун пинга
+    const k = Math.min(1, (now - G.lastPing) / COOLDOWN);
+    $('cool').style.height = `${(1 - k) * 100}%`;
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- Экраны ----------
+  function show(html) { $('card').innerHTML = html; $('ov').hidden = false; running = false; const b = $('card').querySelector('.go'); if (b) b.focus(); }
+  function start(level) { audio(); newLevel(level); $('ov').hidden = true; running = true; }
+  function win() {
+    running = false; sWin();
+    const secs = Math.round((performance.now() - G.t0) / 1000);
+    const stars = G.pings <= G.par ? 3 : G.pings <= G.par * 1.6 ? 2 : 1;
+    if (G.level + 1 > best) { best = G.level + 1; try { localStorage.setItem('echo-best', best); } catch {} $('best').textContent = best; }
+    show(`<h1>Выход найден</h1><div class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
+      <div class="stat"><span><b>${G.pings}</b>пингов</span><span><b>${G.par}</b>норма</span><span><b>${secs}с</b>время</span></div>
+      <p>${stars === 3 ? 'Тихо и точно. Твари даже не проснулись.' : 'Меньше пингов — больше звёзд. Попробуйте запоминать стены.'}</p>
+      <button class="go" data-next="${G.level + 1}">Уровень ${G.level + 1} →</button>`);
+  }
+  function lose() {
+    running = false; sLose();
+    G.enemies.forEach((e) => { e.seen = performance.now() + 5000; e.sx = e.x; e.sy = e.y; });
+    show(`<h1 style="color:var(--enemy);text-shadow:0 0 24px rgba(255,59,92,.5)">Вас услышали</h1>
+      <p>Тварь нашла вас на уровне ${G.level}. Каждый пинг выдаёт, где вы стоите, а шаги слышно в паре клеток.</p>
+      <button class="go" data-next="${G.level}">Ещё раз</button>`);
+  }
+  $('card').addEventListener('click', (e) => { const b = e.target.closest('[data-next]'); if (b) start(+b.dataset.next); });
+
+  show(`<h1>Эхолот</h1><p>Вокруг полная темнота. Найдите выход из лабиринта.</p>
+    <ul>
+      <li><span>📡</span>Пинг пускает звуковую волну: на пару секунд видно стены, выход и тварей.</li>
+      <li><span>👂</span>Твари слышат каждый пинг и идут туда, где он прозвучал. Шаги слышно в паре клеток.</li>
+      <li><span>🟩</span>Выход светится зелёным. Чем меньше пингов, тем больше звёзд.</li>
+      <li><span>⌨️</span>Стрелки или WASD — ходить, пробел — пинг. На телефоне кнопки внизу.</li>
+    </ul>
+    <button class="go" data-next="1">Начать</button>
+    ${best > 1 ? `<button class="go" style="background:transparent;color:var(--wave);border:1px solid var(--wave)" data-next="${best}">Продолжить с уровня ${best}</button>` : ''}
+    <a class="back" href="/">← Портфолио</a>`);
+
+  // ---------- Управление ----------
+  const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+  addEventListener('keydown', (e) => {
+    if (KEYS[e.code]) { e.preventDefault(); move(KEYS[e.code]); }
+    else if (e.code === 'Space') { e.preventDefault(); if (running) ping(); else $('card').querySelector('.go')?.click(); }
+    else if (e.code === 'Enter' && !running) $('card').querySelector('.go')?.click();
+  });
+  // удержание кнопки направления — повтор шага
+  let holdTimer = null;
+  const stopHold = () => { clearInterval(holdTimer); holdTimer = null; };
+  document.querySelectorAll('.dpad button').forEach((b) => {
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); move(b.dataset.d); stopHold(); holdTimer = setInterval(() => move(b.dataset.d), 150); });
+  });
+  addEventListener('pointerup', stopHold); addEventListener('pointercancel', stopHold);
+  $('pingBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); ping(); });
+  // свайп по полю — шаг, тап — пинг
+  let sw = null;
+  cv.addEventListener('pointerdown', (e) => { sw = [e.clientX, e.clientY]; });
+  cv.addEventListener('pointerup', (e) => {
+    if (!sw) return;
+    const dx = e.clientX - sw[0], dy = e.clientY - sw[1]; sw = null;
+    if (Math.hypot(dx, dy) < 18) { ping(); return; }
+    move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  });
+  $('sound').addEventListener('click', () => { muted = !muted; $('sound').textContent = muted ? '🔇' : '🔊'; });
+  layout();
+})();
+</script>
+</body>
+</html>
